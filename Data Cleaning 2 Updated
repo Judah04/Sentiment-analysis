@@ -1,0 +1,204 @@
+import pandas as pd 
+import warnings
+import re
+
+warnings.filterwarnings('ignore')  # Ignore all warnings
+df = pd.read_csv("twitter_data.csv")
+
+
+
+#Assigning columns
+#Reset the index
+df = df.reset_index(drop=True)
+
+#Define new column names
+new_columns = [
+    'index',
+    'user',
+    'tweet',
+    'VAR',
+    'twitterlink',
+    'username'
+]
+
+#Update column names with str.strip() to remove whitespace
+df.columns = [column.strip() for column in new_columns]
+
+#Handle duplicate column names
+df.columns = df.columns.unique()
+
+#Remove the index column
+df = df.drop(columns=['index'], axis=1)
+
+#Remove the VAR column
+df = df.drop(columns=['VAR'], axis=1)
+
+#Convert the user and tweet columns to strings
+df["user"] = df["user"].astype(str)
+
+df["tweet"] = df["tweet"].astype(str)
+
+
+#Cleaning first column (users)
+df['user'] = df['user'].apply(lambda x: x.lstrip('"'))
+
+
+#Define a function to handle usernames and remove characters after '-'
+def process_username(text):
+    #Extract username if it starts with '@'
+    matches = re.findall(r'@(\w+)', text)
+    if matches:
+        return '@' + matches[0]
+
+    #Remove characters after '-'
+    if "-" in text:
+        return re.sub(r"[^\w\s]", "", text)
+
+    return text
+
+#Apply the function to the "user" column
+df["user"] = df["user"].apply(process_username)
+
+
+
+
+#Define a function to remove characters after "on X:"
+def remove_after_on_x(text):
+    return text.split("on X:")[0]
+
+#Apply the function to the "user" column
+df["user"] = df["user"].apply(remove_after_on_x)
+
+
+
+#Romove words after 3rd word
+def remove_words_after_3rd(text):
+    words = text.split()
+    words = words[:3]
+    return " ".join(words)
+
+df['user'] = df['user'].apply(remove_words_after_3rd)
+
+
+
+
+#Define a function to compare the first 4 words of "user" and "tweet" columns
+def compare_and_replace(row):
+    user_words = row["user"].split()[:3]
+    tweet_words = row["tweet"].split()[:3]
+
+    if user_words == tweet_words:
+        return "unknown user"
+    else:
+        return row["user"]
+
+# Apply the function to create a new "user" column with the changes
+df["user"] = df.apply(compare_and_replace, axis=1)
+
+
+#Deleting images
+# Remove rows where the "user" column begins with "file:///var/mobile/Library/"
+df = df[~df['user'].str.startswith("file:///var/mobile/Library/")]
+
+#Remove 'Xcom' from every row in the "user" column
+df['user'] = df['user'].str.replace('Xcom', '')
+
+
+#Display only the first column
+#print(df.iloc[:, 0])
+
+
+#Renaming the user column name to 'name'
+df = df.rename(columns={'user': 'name'})
+
+#Cleaning the tweet column
+
+# Replace "Embedded video" and everything after it with an empty string
+df['tweet'] = df['tweet'].str.replace(r'Embedded video[^\n]*', '', regex=True)
+
+# Remove everything after 'Reposts' (including 'Reposts')
+df['tweet'] = df['tweet'].str.split('Reposts').str[0]
+
+def clean_tweet(row):
+    # Remove "Â·" and everything after it
+    row = re.sub(r'Â·.*', '', row)
+    # Replace "Â·" with "" to remove it
+    row = row.replace('Â·', '')
+    return row
+
+# Apply the clean_tweet function to the "tweet" column
+df['tweet'] = df['tweet'].apply(clean_tweet)
+
+
+#Cleaning the last row (username)
+
+# Extract the desired part using a regular expression
+df['username'] = df['username'].str.extract(r'https://twitter.com › (\S+) › status', expand=False)
+
+# Check and fill missing values in the "username" column
+df['username'] = df.apply(lambda row: row['twitterlink'].replace('https://twitter.com/', '').
+                          split('/status/')[0] if pd.isnull(row['username']) else row['username'], axis=1)
+
+# Clean the "username" column
+df['username'] = df['username'].str.replace('https://twitter.com/', '').str.replace('/status/.*', '')
+
+# Display the updated DataFrame
+#print(df['username'])
+
+
+# Check and fill missing values in the "username" column
+df['username'] = df.apply(lambda row: row['twitterlink'].replace('https://mobile.twitter.com/', '') 
+                          if pd.isnull(row['username']) else row['username'], axis=1)
+
+# Clean the "username" column
+df['username'] = df['username'].str.replace('https://mobile.twitter.com/', '')
+
+# Display the updated DataFrame
+#print(df['username'])
+
+
+# Replace "Embedded video" and everything after it with an empty string
+df['tweet'] = df['tweet'].str.replace(r'Embedded video[^\n]*', '', regex=True)
+
+# Remove everything after 'Reposts' (including 'Reposts')
+df['tweet'] = df['tweet'].str.split('Reposts').str[0]
+
+def cleaner_tweet(text):
+    text = re.sub(r'http\S+', '', text)
+
+    #Remove Twitter handles (mentions) and hashtags.
+    text = re.sub(r'@[A-Za-z0-9_]+', '', text)
+    text = re.sub(r'#', '', text)
+
+    #Remove common retweet indicators.
+    text = text.replace('RT ', '')
+
+    #Emojis may carry sentiment, so you might decide to keep or replace them.
+    # Replace emojis with a placeholder or remove them
+    text = re.sub(r'[\U00010000-\U0010ffff]', '', text)
+
+    #Some special characters may be present in the scraped text.
+
+    text = re.sub(r'[^\w\s]', '', text)
+
+    #Ensure consistent formatting by removing line breaks and extra whitespace.
+
+    text = text.replace('\n', ' ').strip()
+    
+    return text
+    
+# Apply the clean_tweet function to the "tweet" column
+df['tweet'] = df['tweet'].apply(cleaner_tweet)
+
+
+# Display the updated DataFrame
+
+
+
+
+#Saving as csv file 
+df.to_csv('cleaner_twitter_data2.csv', index=False)
+
+
+df_new = pd.read_csv('cleaner_twitter_data2.csv')
+df_new.head()
